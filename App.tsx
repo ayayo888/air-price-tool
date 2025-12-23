@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { DataGrid } from './components/DataGrid';
 import { PriceUpdater } from './components/PriceUpdater';
 import { SheetRow, PriceUpdatePreview } from './types';
