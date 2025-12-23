@@ -120,24 +120,51 @@ export default function App() {
         
         {/* Left Panel: Actions / Updater */}
         <section className="w-1/3 min-w-[400px] flex flex-col">
-          <PriceUpdater 
-            currentData={project.rows}
-            headers={project.headers}
-            onApplyUpdates={handleApplyUpdates} 
-          />
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+             <PriceUpdater 
+               currentData={project.rows}
+               headers={project.headers}
+               onApplyUpdates={handleApplyUpdates} 
+             />
+          </div>
         </section>
 
         {/* Right Panel: Data Grid (The "Spreadsheet") */}
         <section className="flex-1 flex flex-col min-w-0">
-          <DataGrid 
-            data={project.rows}
-            headers={project.headers}
-            onImportData={handleImportData}
-            onCellEdit={handleCellEdit}
-          />
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+            <DataGrid 
+              data={project.rows}
+              headers={project.headers}
+              onImportData={handleImportData}
+              onCellEdit={handleCellEdit}
+            />
+          </div>
         </section>
 
       </main>
+
+      {/* SEO Footer - Visible to Bots, helpful for users, keeps 'app' feel */}
+      <footer className="bg-gray-50 border-t border-gray-200 p-4 text-xs text-gray-500">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h2 className="font-semibold text-gray-700 mb-1">About AirFreight Smart Updater</h2>
+            <p>
+              This is a free online <strong>Logistics OCR tool</strong> designed for freight forwarders. 
+              Upload images of air freight rate sheets, and our AI (powered by Gemini Vision) automatically 
+              extracts destination codes (e.g., SVO, HKG) and weight breaks (+45kg, +100kg, etc.) into an 
+              editable Excel-like grid.
+            </p>
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-700 mb-1">Features</h2>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>Instant <strong>Image to Excel</strong> conversion for rate sheets.</li>
+              <li>Privacy-focused: Data is processed in memory and saved to Local Storage.</li>
+              <li>Export refined data to <strong>CSV or XLSX</strong> for your ERP system.</li>
+            </ul>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

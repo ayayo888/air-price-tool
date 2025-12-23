@@ -1,8 +1,9 @@
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { ParsedPortData } from "../types";
 
-// Using Gemini 2.0 Flash via OpenRouter
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL_NAME = "google/gemini-2.0-flash-001";
+// Using Gemini 2.0 Flash (or 3.0 Flash Preview as per guidelines for basic tasks)
+// The guidelines suggest 'gemini-3-flash-preview' for basic text tasks.
+const MODEL_NAME = "gemini-3-flash-preview";
 
 const SYSTEM_PROMPT = `
 你是一个OCR和数据结构化专家。请分析这张空运价格表的图片。
@@ -27,89 +28,52 @@ export interface AIResponse {
   raw: string;
 }
 
-export const parseRateSheetImage = async (base64Image: string, apiKey: string): Promise<AIResponse> => {
-  if (!apiKey) {
-    throw new Error("API Key is missing.");
-  }
+export const parseRateSheetImage = async (base64Image: string): Promise<AIResponse> => {
+  // Use process.env.API_KEY directly as per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  // Ensure Base64 is formatted correctly
-  let formattedImage = base64Image;
-  if (!base64Image.startsWith("data:")) {
-    formattedImage = `data:image/png;base64,${base64Image}`;
-  }
-
-  const payload = {
-    model: MODEL_NAME,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: SYSTEM_PROMPT },
-          { type: "image_url", image_url: { url: formattedImage } }
-        ]
-      }
-    ]
-  };
+  // Ensure Base64 is formatted correctly (remove data URI scheme if present)
+  // The SDK expects raw base64 data for inlineData
+  const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
 
   try {
-    const response = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://airfreight-updater.local",
-        "X-Title": "AirFreight Smart Updater"
+    const response: GenerateContentResponse = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: {
+        parts: [
+          { text: SYSTEM_PROMPT },
+          {
+            inlineData: {
+              mimeType: "image/png", // Assuming PNG or generic image handling
+              data: base64Data
+            }
+          }
+        ]
       },
-      body: JSON.stringify(payload)
+      config: {
+        responseMimeType: "application/json"
+      }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenRouter API Error (${response.status}): ${errorText}`);
-    }
-
-    const data = await response.json();
+    const content = response.text || "";
     
-    if (data.choices && data.choices.length > 0) {
-      let content = data.choices[0].message.content || "";
-      const originalContent = content; // Keep for debugging
-      
-      // Robust Parsing Strategy:
-      // 1. Remove Markdown code blocks
-      content = content.replace(/```json/g, "").replace(/```/g, "").trim();
-
-      // 2. Find the first '[' and last ']' to ignore conversational text
-      const firstBracket = content.indexOf('[');
-      const lastBracket = content.lastIndexOf(']');
-
-      if (firstBracket !== -1 && lastBracket !== -1) {
-        content = content.substring(firstBracket, lastBracket + 1);
-      } else {
-        // If no brackets found, it might not be a valid array.
-        // We still try to parse what we have, or return the raw text for the user to see.
-        console.warn("No JSON array brackets found in response");
-      }
-      
-      try {
-        const parsed = JSON.parse(content);
-        
-        if (!Array.isArray(parsed)) {
-          throw new Error("AI returned a JSON object, but it was not an array.");
-        }
-
-        return { parsed: parsed as ParsedPortData[], raw: originalContent };
-
-      } catch (e) {
-        console.error("JSON Parse Error:", content);
-        // Throwing error with raw content so we can display it
-        throw new Error(`Failed to parse JSON. Raw output: ${originalContent.substring(0, 100)}...`);
-      }
-    } else {
-      throw new Error("No response content from AI model.");
+    let parsed: ParsedPortData[];
+    try {
+       parsed = JSON.parse(content);
+    } catch (e) {
+       // Fallback cleanup if model returns markdown block despite JSON mime type
+       const clean = content.replace(/```json/g, "").replace(/```/g, "").trim();
+       parsed = JSON.parse(clean);
     }
+    
+    if (!Array.isArray(parsed)) {
+      throw new Error("AI returned a JSON object, but it was not an array.");
+    }
+
+    return { parsed: parsed, raw: content };
 
   } catch (error: any) {
-    console.error("API Request Failed:", error);
+    console.error("Gemini API Request Failed:", error);
     throw error;
   }
 };
