@@ -1,0 +1,5 @@
+{
+  "name": "AirFreight Smart Updater",
+  "description": "A desktop-style React application to automate air freight price updates using Gemini Vision API. Replaces the original Google Sheets script with a modern local interface.",
+  "requestFramePermissions": []
+}
