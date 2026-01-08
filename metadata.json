@@ -1,5 +1,5 @@
 {
-  "name": "AirFreight Smart Updater",
-  "description": "A desktop-style React application to automate air freight price updates using Gemini Vision API. Replaces the original Google Sheets script with a modern local interface.",
+  "name": "Douyin Data Cleaner",
+  "description": "A specialized tool for cleaning and structuring social media profile data for international logistics using OpenRouter/Gemini.",
   "requestFramePermissions": []
 }

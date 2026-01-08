@@ -1,8 +1,7 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { ParsedPortData } from "../types";
 
-// Using Gemini 2.0 Flash (or 3.0 Flash Preview as per guidelines for basic tasks)
-// The guidelines suggest 'gemini-3-flash-preview' for basic text tasks.
+// Using Gemini 3.0 Flash Preview as per guidelines for basic tasks
 const MODEL_NAME = "gemini-3-flash-preview";
 
 const SYSTEM_PROMPT = `
@@ -29,8 +28,15 @@ export interface AIResponse {
 }
 
 export const parseRateSheetImage = async (base64Image: string): Promise<AIResponse> => {
-  // Use process.env.API_KEY directly as per guidelines
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // ADAPTATION FOR VITE + VERCEL:
+  // Using process.env.API_KEY as per guidelines.
+  const apiKey = process.env.API_KEY;
+  
+  if (!apiKey) {
+    throw new Error("API Key not found. Please set API_KEY in your environment variables.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: apiKey });
 
   // Ensure Base64 is formatted correctly (remove data URI scheme if present)
   // The SDK expects raw base64 data for inlineData
