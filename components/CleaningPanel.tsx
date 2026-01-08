@@ -146,6 +146,28 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
     }
   };
 
+  // Comprehensive Reset Function
+  const handleFullReset = () => {
+    const isConfirmed = confirm(
+      "【确定要彻底清空吗？】\n\n" +
+      "1. 清空所有已提取的表格数据\n" +
+      "2. 清空左侧输入框文本\n" +
+      "3. 重置所有操作状态\n\n" +
+      "(您的 API Key 会被保留)"
+    );
+
+    if (isConfirmed) {
+      // 1. Clear Local State
+      setInputText('');
+      setStatus('已重置所有数据');
+      setDebugLog(null);
+      setIsLoading(false);
+      
+      // 2. Clear App State (Table Data)
+      onClearAll();
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#F3F3F3]">
       {/* API Key Input - Win10 style input */}
@@ -258,14 +280,14 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
       {/* Footer Actions (Reset Cache) */}
       <div className="p-4 border-t border-[#E5E5E5] bg-[#F9F9F9]">
          <div className="text-[10px] text-[#666666] mb-2 text-center">
-            清理缓存
+            清理缓存与数据
          </div>
          <button
-            onClick={onClearAll}
-            className="w-full py-1.5 text-[#333333] text-xs border border-[#999999] hover:bg-[#E5E5E5] hover:border-[#666666] active:bg-[#CCCCCC] transition-colors bg-white"
-            title="此操作将清空表格和浏览器缓存，下次粘贴时将重新录入数据"
+            onClick={handleFullReset}
+            className="w-full py-1.5 text-[#333333] text-xs border border-[#999999] hover:bg-[#E5E5E5] hover:border-[#666666] active:bg-[#CCCCCC] transition-colors bg-white font-semibold"
+            title="此操作将清空表格数据和输入框内容"
           >
-            清空表格与缓存 (Reset All)
+            清空所有数据 (Reset All)
           </button>
       </div>
     </div>

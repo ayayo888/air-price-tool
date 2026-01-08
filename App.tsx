@@ -79,9 +79,9 @@ export default function App() {
   };
 
   const resetDatabase = () => {
-    if(confirm("确定要清空所有数据吗？\n此操作将清除所有已提取的表格数据。\n(API Key配置不会被清除)")) {
-      setProject({ rows: [] });
-    }
+    // Directly clear state and storage. Confirmation is handled in the UI component now.
+    setProject({ rows: [] });
+    localStorage.setItem('cleaner_db', JSON.stringify([]));
   };
 
   return (

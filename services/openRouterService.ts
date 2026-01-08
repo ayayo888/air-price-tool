@@ -4,7 +4,7 @@ import { ParsedProfile } from "../types";
 const MODEL_NAME = "google/gemini-2.0-flash-001";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-AutoBatch");
+console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-AutoBatch-v2");
 
 // Custom Error class to transport raw response to UI
 export class ApiError extends Error {
@@ -228,7 +228,6 @@ export const extractProfilesFromText = async (
     } catch (error) {
       console.error(`[Batching] Chunk ${i + 1} failed:`, error);
       // We continue to the next chunk instead of failing everything
-      // Optional: Add a placeholder error profile or just log it
     }
   }
 
@@ -237,10 +236,6 @@ export const extractProfilesFromText = async (
 
 export const filterIrrelevantProfiles = async (rows: { id: number | string, text: string }[], apiKey: string): Promise<any[]> => {
   if (!apiKey) throw new Error("请输入 OpenRouter API Key");
-
-  // Filtering is usually lighter on output tokens (just IDs), 
-  // but if input is huge, we might need batching here too later.
-  // For now, let's keep it simple as user explicitly asked about extraction issues.
 
   try {
     const response = await fetch(OPENROUTER_URL, {
