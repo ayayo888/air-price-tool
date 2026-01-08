@@ -1,4 +1,3 @@
-
 import React, { useRef, useState, useEffect } from 'react';
 import { read, utils, writeFile } from 'xlsx';
 import { CleanerRow } from '../types';
@@ -28,11 +27,9 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
   const handleExport = (format: 'xlsx' | 'csv') => {
     setIsExportMenuOpen(false);
     if (data.length === 0) {
-      alert("表格为空，无法导出。");
+      alert("表格为空");
       return;
     }
-    // Filter out internal fields like _internal_id and checkStatus for cleaner export
-    // unless user wants status. Let's keep status but rename headers if needed.
     const exportData = data.map(row => {
       const rowData: Record<string, any> = {};
       headers.forEach(h => { 
@@ -47,10 +44,7 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
     const ws = utils.json_to_sheet(exportData, { header: headers });
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, "CleanedData");
-    const dateStr = new Date().toISOString().split('T')[0];
-    const extension = format === 'csv' ? 'csv' : 'xlsx';
-    const fileName = `douyin_data_${dateStr}.${extension}`;
-    writeFile(wb, fileName, { bookType: format === 'csv' ? 'csv' : 'xlsx' });
+    writeFile(wb, `douyin_data.${format === 'csv' ? 'csv' : 'xlsx'}`);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,13 +56,11 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
     const processData = (arrayBuffer: ArrayBuffer | string, isBinary: boolean) => {
       try {
         const workbook = read(arrayBuffer, { type: isBinary ? 'array' : 'string', cellDates: true, cellNF: true, cellText: false });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: "", raw: false });
         processRawGrid(jsonData);
       } catch (error) {
-        console.error("Parse Error:", error);
-        alert("文件解析失败，请检查格式。");
+        alert("文件解析失败");
       }
     };
 
@@ -83,30 +75,20 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
   };
 
   const processRawGrid = (rows: any[][]) => {
-    if (!rows || rows.length === 0) { alert("文件为空。"); return; }
-    
-    // Simple heuristic: If imports don't match our headers, we just try to map them or show as is.
-    // For this specific tool, we treat the first row as headers.
+    if (!rows || rows.length === 0) return;
     const rawHeaders = rows[0].map(h => String(h || "").trim());
-    
-    // Remove "状态" if it exists in raw import to avoid conflict, we manage it internally
     const filteredRawHeaders = rawHeaders.filter(h => h !== '状态');
-
     const parsedRows: CleanerRow[] = [];
     for (let i = 1; i < rows.length; i++) {
       const rowArr = rows[i];
       if (!rowArr || rowArr.every(c => c === "" || c === null || c === undefined)) continue;
-      
       const rowObj: CleanerRow = { 
         _internal_id: Date.now() + i + Math.random(),
-        checkStatus: 'unverified', // Imported data needs verification
+        checkStatus: 'unverified',
         用户名: '', 抖音号: '', 粉丝数: '', 简介: '', 联系方式: '' 
       }; 
-      
       rawHeaders.forEach((header, colIndex) => { 
-        if (header !== '状态') {
-          rowObj[header] = rowArr[colIndex]; 
-        }
+        if (header !== '状态') rowObj[header] = rowArr[colIndex]; 
       });
       parsedRows.push(rowObj);
     }
@@ -114,34 +96,33 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
   };
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
-      {/* Toolbar */}
-      <div className="px-4 py-2 border-b border-gray-200 bg-gray-50/50 flex justify-between items-center gap-2">
+    <div className="flex flex-col h-full bg-white">
+      {/* Toolbar - Win10 Ribbon-ish look */}
+      <div className="px-2 py-1 bg-[#F3F3F3] border-b border-[#E5E5E5] flex justify-between items-center h-[36px]">
         <div className="flex items-center gap-2">
-           <span className="text-xs font-semibold text-gray-600">全部数据</span>
-           <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full">{data.length}</span>
+           <span className="text-xs text-[#333333]">记录数: {data.length}</span>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <input type="file" accept=".csv, .xlsx, .xls" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            className="px-3 py-1 text-xs text-[#333333] hover:bg-[#D9D9D9] transition-colors border border-transparent hover:border-[#CCCCCC] rounded-none"
           >
-            <span>📂</span> 导入表格
+            导入
           </button>
           
           <div className="relative" ref={menuRef}>
             <button 
               onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-green-600 border border-green-600 rounded hover:bg-green-700 transition-colors shadow-sm"
+              className="px-3 py-1 text-xs text-[#333333] hover:bg-[#D9D9D9] transition-colors border border-transparent hover:border-[#CCCCCC] rounded-none"
             >
-              <span>💾</span> 导出数据
+              导出
             </button>
             {isExportMenuOpen && (
-              <div className="absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded shadow-xl z-50 py-1 text-xs">
-                <button onClick={() => handleExport('xlsx')} className="block w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700">Excel (.xlsx)</button>
-                <button onClick={() => handleExport('csv')} className="block w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700">CSV (.csv)</button>
+              <div className="absolute right-0 top-full mt-0 w-32 bg-white border border-[#CCCCCC] shadow-md z-50 py-1 text-xs">
+                <button onClick={() => handleExport('xlsx')} className="block w-full text-left px-3 py-2 hover:bg-[#F0F0F0] text-[#333333]">Excel (.xlsx)</button>
+                <button onClick={() => handleExport('csv')} className="block w-full text-left px-3 py-2 hover:bg-[#F0F0F0] text-[#333333]">CSV (.csv)</button>
               </div>
             )}
           </div>
@@ -149,65 +130,48 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
       </div>
 
       {/* Grid */}
-      <div className="overflow-auto flex-1 bg-white relative">
+      <div className="overflow-auto flex-1 bg-white relative scrollbar-win10">
         <table className="w-full text-sm text-left border-collapse">
-          <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10 shadow-sm">
+          <thead className="bg-white sticky top-0 z-10">
             <tr>
-              <th className="w-10 px-2 py-2.5 border-b border-r border-gray-200 bg-gray-50 text-center font-medium text-xs">#</th>
+              <th className="w-8 border-b border-r border-[#D9D9D9] bg-[#F5F5F5] text-center"></th>
               {headers.map((h, i) => (
-                 <th key={i} className="px-3 py-2.5 border-b border-r border-gray-200 font-semibold text-xs whitespace-nowrap min-w-[80px]">
+                 <th key={i} className="px-3 py-1 border-b border-r border-[#D9D9D9] font-normal text-xs text-[#333333] whitespace-nowrap min-w-[100px] h-[30px] hover:bg-[#EBEBEB]">
                    {h}
                  </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.length === 0 ? (
-              <tr>
-                <td colSpan={headers.length + 1} className="text-center py-20 text-gray-400">
-                  <div className="flex flex-col items-center gap-3 opacity-50">
-                    <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                    </svg>
-                    <p className="text-sm">暂无数据</p>
-                  </div>
+            {data.map((row, rIdx) => (
+              <tr key={row._internal_id || rIdx} className="hover:bg-[#E5F3FF] group border-b border-[#F0F0F0]">
+                <td className="w-8 border-r border-[#F0F0F0] bg-[#F9F9F9] text-center text-[10px] text-[#999999] select-none">
+                  {rIdx + 1}
                 </td>
-              </tr>
-            ) : (
-              data.map((row, rIdx) => (
-                <tr key={row._internal_id || rIdx} className="hover:bg-blue-50/50 group border-b border-gray-100 transition-colors">
-                  <td className="px-2 py-2 border-r border-gray-100 bg-gray-50/50 text-center text-xs text-gray-400 select-none">
-                    {rIdx + 1}
-                  </td>
-                  {headers.map((header, cIdx) => {
-                     // Render Status Column
-                     if (header === '状态') {
-                       const isVerified = row.checkStatus === 'verified';
-                       return (
-                         <td key={cIdx} className="px-3 border-r border-gray-100 bg-white">
-                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${isVerified ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                             <span className={`w-1.5 h-1.5 rounded-full ${isVerified ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-                             {isVerified ? '已验证' : '待检查'}
-                           </span>
-                         </td>
-                       );
-                     }
-
-                     const val = row[header] ?? "";
-                     return (
-                        <td key={cIdx} className="border-r border-gray-100 p-0 relative min-w-[140px]">
-                          <textarea 
-                            value={val}
-                            onChange={(e) => onCellEdit(row._internal_id!, header, e.target.value)}
-                            className="w-full h-full min-h-[40px] px-3 py-2.5 bg-transparent text-gray-700 border-none focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 focus:ring-inset text-xs resize-none overflow-hidden whitespace-pre-wrap leading-relaxed"
-                            rows={1}
-                          />
+                {headers.map((header, cIdx) => {
+                    if (header === '状态') {
+                      const isVerified = row.checkStatus === 'verified';
+                      return (
+                        <td key={cIdx} className="px-2 border-r border-[#F0F0F0] text-xs">
+                          <span className={isVerified ? 'text-green-600' : 'text-gray-400'}>
+                            {isVerified ? '●' : '○'}
+                          </span>
                         </td>
-                     );
-                  })}
-                </tr>
-              ))
-            )}
+                      );
+                    }
+                    const val = row[header] ?? "";
+                    return (
+                      <td key={cIdx} className="border-r border-[#F0F0F0] p-0 min-w-[140px]">
+                        <input 
+                          value={val}
+                          onChange={(e) => onCellEdit(row._internal_id!, header, e.target.value)}
+                          className="w-full h-full px-2 py-1.5 bg-transparent border-none focus:ring-1 focus:ring-inset focus:ring-[#0078D7] text-xs text-[#333333]"
+                        />
+                      </td>
+                    );
+                })}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

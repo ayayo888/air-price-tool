@@ -1,8 +1,20 @@
 import { ParsedProfile } from "../types";
 
-// Using Gemini 2.0 Flash
+// Using Gemini 2.0 Flash (OpenRouter ID)
 const MODEL_NAME = "google/gemini-2.0-flash-001";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-StrictPrompt");
+
+// Custom Error class to transport raw response to UI
+export class ApiError extends Error {
+  rawResponse?: string;
+  constructor(message: string, rawResponse?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.rawResponse = rawResponse;
+  }
+}
 
 // 1. Strict Schema for Extraction
 const EXTRACT_JSON_SCHEMA = {
@@ -69,44 +81,59 @@ const FILTER_JSON_SCHEMA = {
   }
 };
 
+// --- UPDATED PROMPTS: EXPLICIT JSON ENFORCEMENT ---
+
 const SYSTEM_PROMPT_EXTRACT = `
 你是一个专业的数据清洗助手。你的任务是从用户提供的非结构化文本中提取抖音/TikTok账号信息。
+
+【严格输出规则】
+1. 只允许输出符合 Schema 定义的 JSON 字符串。
+2. 严禁使用 Markdown 代码块（不要包含 \`\`\`json 或 \`\`\`）。
+3. 严禁包含任何“好的”、“这是结果”等解释性文字。
+4. 如果未提取到数据，返回空数组。
 `;
 
 const SYSTEM_PROMPT_FILTER = `
 你是一个国际物流行业的数据分析师。请分析提供的账号列表，进行相关性清洗。
 目标：找出所有与“国际物流、跨境贸易、货代”【无关】的账号ID。
 
-判定标准（保留，即相关）：
-- 关键词：空运、海运、快递、物流、货代、双清包税、空派、海派、集运、海外仓、跨境电商供应链、外贸。
+【判定标准】
+- 保留（相关）：空运、海运、快递、物流、货代、双清包税、空派、海派、集运、海外仓、跨境电商供应链、外贸。
+- 删除（无关）：纯娱乐、生活分享、甚至修车/餐饮等本地服务、纯粹的博览会推广（除非明确是物流展）、卖衣服/百货直播号。
 
-判定标准（删除，即无关）：
-- 纯娱乐、生活分享、甚至修车/餐饮等本地服务。
-- 纯粹的博览会推广（除非明确是物流展）。
-- 卖衣服、卖百货的直播号（除非是卖物流服务）。
+【严格输出规则】
+1. 只允许输出符合 Schema 定义的 JSON 字符串。
+2. 严禁使用 Markdown 代码块（不要包含 \`\`\`json 或 \`\`\`）。
+3. 严禁包含任何解释性文字。
 `;
 
 // --- Helper: Robust JSON Parsing with Logging ---
 const safeJsonParse = (rawText: string, context: string) => {
-  console.log(`[${context}] Raw Model Output:`, rawText); // DEBUG LOG
+  console.log(`[${context}] Raw Model Output:`, rawText); 
 
   try {
-    // 1. Try direct parse
     return JSON.parse(rawText);
   } catch (e) {
     console.warn(`[${context}] Direct JSON parse failed, trying to strip Markdown...`);
     
-    // 2. Try stripping Markdown code blocks (common issue even with structured outputs)
-    const cleanText = rawText
-      .replace(/```json\s*/g, "")
-      .replace(/```\s*/g, "")
+    // Aggressive cleanup: remove markdown blocks, valid or invalid
+    let cleanText = rawText
+      .replace(/```json/gi, "") // remove ```json
+      .replace(/```/g, "")      // remove remaining ```
       .trim();
+    
+    // Sometimes models add a conversational prefix line even without markdown
+    const firstBrace = cleanText.indexOf('{');
+    const lastBrace = cleanText.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+    }
       
     try {
       return JSON.parse(cleanText);
     } catch (e2) {
       console.error(`[${context}] Final JSON parse failed.`, e2);
-      throw new Error(`无法解析 API 返回的 JSON: ${(e2 as Error).message}`);
+      throw new ApiError(`JSON Parse Failed: ${(e2 as Error).message}`, rawText);
     }
   }
 };
@@ -139,15 +166,10 @@ export const extractProfilesFromText = async (text: string, apiKey: string): Pro
       })
     });
 
-    // Get raw text first to avoid crashing on non-JSON error pages
     const responseBodyText = await response.text();
-    
-    // Log the status and body length
     console.log(`[Extract] Response Status: ${response.status}`);
-    console.log(`[Extract] Response Body Preview: ${responseBodyText.substring(0, 200)}...`);
-
+    
     if (!response.ok) {
-      // Try to parse error message from JSON, otherwise use text
       let errorMsg = `API Error: ${response.status}`;
       try {
         const errorJson = JSON.parse(responseBodyText);
@@ -155,20 +177,18 @@ export const extractProfilesFromText = async (text: string, apiKey: string): Pro
           errorMsg = errorJson.error.message;
         }
       } catch {
-        errorMsg += ` - ${responseBodyText}`; // Append raw text if not JSON
+        errorMsg += ` - Raw: ${responseBodyText.substring(0, 100)}...`;
       }
-      throw new Error(errorMsg);
+      throw new ApiError(errorMsg, responseBodyText);
     }
 
     const data = JSON.parse(responseBodyText);
     const contentStr = data.choices?.[0]?.message?.content;
     
     if (!contentStr) {
-      console.error("[Extract] Unexpected structure:", data);
-      throw new Error("API 返回结构异常: choices[0].message.content 为空");
+      throw new ApiError("API Response Content is Empty", responseBodyText);
     }
 
-    // Robust Parse
     const parsedObj = safeJsonParse(contentStr, "Extract");
     
     if (parsedObj && Array.isArray(parsedObj.profiles)) {
@@ -180,7 +200,10 @@ export const extractProfilesFromText = async (text: string, apiKey: string): Pro
 
   } catch (error) {
     console.error("[Extract] Fatal Error:", error);
-    throw error;
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError((error as Error).message);
   }
 };
 
@@ -213,7 +236,6 @@ export const filterIrrelevantProfiles = async (rows: { id: number | string, text
     });
 
     const responseBodyText = await response.text();
-
     console.log(`[Filter] Response Status: ${response.status}`);
     
     if (!response.ok) {
@@ -224,20 +246,18 @@ export const filterIrrelevantProfiles = async (rows: { id: number | string, text
            errorMsg = errorJson.error.message;
          }
        } catch {
-         errorMsg += ` - ${responseBodyText}`;
+         errorMsg += ` - Raw: ${responseBodyText.substring(0, 100)}...`;
        }
-       throw new Error(errorMsg);
+       throw new ApiError(errorMsg, responseBodyText);
     }
 
     const data = JSON.parse(responseBodyText);
     const contentStr = data.choices?.[0]?.message?.content;
 
     if (!contentStr) {
-      console.error("[Filter] Unexpected structure:", data);
-      throw new Error("API 返回内容为空");
+      throw new ApiError("API Response Content is Empty", responseBodyText);
     }
     
-    // Robust Parse
     const parsedObj = safeJsonParse(contentStr, "Filter");
 
     if (parsedObj && Array.isArray(parsedObj.ids_to_remove)) {
@@ -249,6 +269,7 @@ export const filterIrrelevantProfiles = async (rows: { id: number | string, text
 
   } catch (error) {
     console.error("[Filter] Fatal Error:", error);
-    throw error;
+    if (error instanceof ApiError) throw error;
+    throw new ApiError((error as Error).message);
   }
 };

@@ -85,27 +85,26 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* Header */}
-      <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
+    <div className="h-screen w-screen flex flex-col bg-[#F3F3F3] overflow-hidden font-segoe">
+      {/* Windows 10 Title Bar Style Header */}
+      <header className="h-[32px] bg-white border-b border-[#E5E5E5] flex items-center justify-between px-3 select-none app-region-drag">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-[#0078D7] flex items-center justify-center text-white text-[10px] font-bold">
             D
           </div>
-          <h1 className="text-lg font-bold text-gray-800 tracking-tight">抖音数据清洗工具 <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full ml-2">Pro v3.0</span></h1>
+          <span className="text-xs text-[#333333]">抖音数据清洗工具 Pro</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-gray-400">Powered by Gemini 2.0 Flash</span>
-          <button onClick={resetDatabase} className="text-xs text-red-500 hover:text-red-700 hover:underline">
-            清空所有数据
+        <div className="flex items-center gap-4 app-region-no-drag">
+          <button onClick={resetDatabase} className="text-[10px] text-[#666666] hover:bg-[#E5E5E5] px-2 py-0.5 transition-colors">
+            清空数据
           </button>
         </div>
       </header>
 
       {/* Main Content Layout */}
       <main className="flex-1 flex overflow-hidden">
-        {/* Left Panel: Controls */}
-        <aside className="w-[380px] bg-white border-r border-gray-200 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        {/* Left Panel: Controls - Windows 10 Side Panel Style */}
+        <aside className="w-[360px] bg-[#F2F2F2] border-r border-[#D9D9D9] flex flex-col z-10">
           <CleaningPanel 
             currentRows={project.rows}
             onAddRows={handleAddRows}
@@ -114,9 +113,9 @@ export default function App() {
           />
         </aside>
 
-        {/* Right Panel: Data Grid */}
-        <section className="flex-1 flex flex-col min-w-0 bg-gray-50 p-4">
-          <div className="flex-1 bg-white rounded-lg shadow border border-gray-200 overflow-hidden flex flex-col">
+        {/* Right Panel: Data Grid - Windows 10 Content Area */}
+        <section className="flex-1 flex flex-col min-w-0 bg-white">
+          <div className="flex-1 overflow-hidden flex flex-col">
             <DataGrid 
               data={project.rows}
               headers={HEADERS}

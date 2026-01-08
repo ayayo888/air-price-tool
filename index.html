@@ -3,34 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-    <!-- SEO Meta Tags -->
     <title>Douyin Data Cleaner Pro</title>
-    <meta name="description" content="基于OpenRouter Gemini API的抖音账号数据清洗工具，专业版。" />
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body {
-        font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-        background-color: #f3f4f6;
-        color: #1f2937;
+        font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+        background-color: #F3F3F3;
+        color: #000000;
+        -webkit-font-smoothing: antialiased;
       }
       
-      /* Custom Scrollbar */
+      /* Windows 10 Style Scrollbar */
       ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 12px;
+        height: 12px;
       }
       ::-webkit-scrollbar-track {
-        background: #f1f1f1;
+        background: #F0F0F0;
       }
       ::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
-        border-radius: 4px;
+        background: #CDCDCD;
+        border: 3px solid #F0F0F0; /* Creates padding effect */
+        border-radius: 0px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #a8a8a8;
+        background: #A6A6A6;
+      }
+      ::-webkit-scrollbar-thumb:active {
+        background: #606060;
+      }
+
+      /* Electron drag region */
+      .app-region-drag {
+        -webkit-app-region: drag;
+      }
+      .app-region-no-drag {
+        -webkit-app-region: no-drag;
       }
     </style>
   <script type="importmap">
@@ -48,7 +58,6 @@
 </head>
   <body>
     <div id="root"></div>
-    <!-- Vite Entry Point -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
