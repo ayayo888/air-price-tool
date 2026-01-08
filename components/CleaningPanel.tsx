@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CleanerRow, ParsedProfile } from '../types';
-import { extractProfilesFromText, filterIrrelevantProfiles, ApiError } from '../services/openRouterService';
+import { extractProfilesFromText, filterIrrelevantProfiles, ApiError, SYSTEM_PROMPT_FILTER } from '../services/openRouterService';
 
 interface CleaningPanelProps {
   currentRows: CleanerRow[];
@@ -17,6 +17,9 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [debugLog, setDebugLog] = useState<string | null>(null);
+
+  // New State for Editable Prompt
+  const [filterPrompt, setFilterPrompt] = useState(SYSTEM_PROMPT_FILTER);
 
   // Stats for the relevance tab
   const unverifiedCount = currentRows.filter(r => r.checkStatus !== 'verified').length;
@@ -100,6 +103,7 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
   const handleRelevanceCleaning = async () => {
     if (currentRows.length === 0) { alert("无数据"); return; }
     if (!apiKey) { alert("请输入 API Key"); return; }
+    if (!filterPrompt.trim()) { alert("清洗规则不能为空"); return; }
     
     const rowsToCheck = currentRows.filter(r => r.checkStatus !== 'verified');
     
@@ -118,7 +122,8 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
         text: `用户名:${r.用户名}, 简介:${r.简介}`
       }));
 
-      const idsToRemove = await filterIrrelevantProfiles(payload, apiKey);
+      // Pass the editable prompt to the service
+      const idsToRemove = await filterIrrelevantProfiles(payload, apiKey, filterPrompt);
 
       if (Array.isArray(idsToRemove) && idsToRemove.length > 0) {
         onRemoveRows(idsToRemove);
@@ -160,6 +165,7 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
     if (isConfirmed) {
       // 1. Clear Local State
       setInputText('');
+      setFilterPrompt(SYSTEM_PROMPT_FILTER); // Reset Prompt to Default
       setStatus('已重置所有数据');
       setDebugLog(null);
       setIsLoading(false);
@@ -246,12 +252,31 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
               </div>
             </div>
 
+            <div className="flex-1 flex flex-col min-h-0">
+               <div className="flex justify-between items-center mb-1">
+                 <label className="text-[11px] text-[#666666]">AI 清洗规则 (可编辑)</label>
+                 <button 
+                   onClick={() => setFilterPrompt(SYSTEM_PROMPT_FILTER)}
+                   className="text-[10px] text-[#0078D7] hover:underline cursor-pointer"
+                   title="恢复默认的物流行业清洗规则"
+                 >
+                   恢复默认
+                 </button>
+               </div>
+               <textarea 
+                 className="flex-1 w-full p-2 text-xs bg-white border border-[#999999] hover:border-[#666666] focus:border-[#0078D7] outline-none font-mono resize-none rounded-none text-[#333333]"
+                 value={filterPrompt}
+                 onChange={(e) => setFilterPrompt(e.target.value)}
+                 placeholder="在这里输入 Prompt 提示词，定义哪些账号是需要的，哪些是无关的..."
+               />
+            </div>
+
             <button 
               onClick={handleRelevanceCleaning}
               disabled={isLoading || unverifiedCount === 0}
-              className={`mt-auto w-full py-1.5 text-white text-sm bg-[#0078D7] hover:bg-[#006CC1] active:bg-[#005A9E] disabled:bg-[#CCCCCC] disabled:text-[#666666] transition-colors border-none rounded-none`}
+              className={`w-full py-1.5 text-white text-sm bg-[#0078D7] hover:bg-[#006CC1] active:bg-[#005A9E] disabled:bg-[#CCCCCC] disabled:text-[#666666] transition-colors border-none rounded-none`}
             >
-              {isLoading ? '处理中...' : '开始清洗'}
+              {isLoading ? '处理中...' : '开始 AI 清洗'}
             </button>
           </div>
         )}

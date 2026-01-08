@@ -113,7 +113,7 @@ const SYSTEM_PROMPT_EXTRACT = `
 2. 如果未提取到数据，返回 { "profiles": [] }。
 `;
 
-const SYSTEM_PROMPT_FILTER = `
+export const SYSTEM_PROMPT_FILTER = `
 你是一个国际物流行业的数据分析师。请分析提供的账号列表，进行相关性清洗。
 目标：找出所有与“国际物流、跨境贸易、货代”【无关】的账号ID。
 
@@ -247,8 +247,15 @@ export const extractProfilesFromText = async (
   return allProfiles;
 };
 
-export const filterIrrelevantProfiles = async (rows: { id: number | string, text: string }[], apiKey: string): Promise<any[]> => {
+export const filterIrrelevantProfiles = async (
+  rows: { id: number | string, text: string }[], 
+  apiKey: string,
+  customPrompt?: string
+): Promise<any[]> => {
   if (!apiKey) throw new Error("请输入 OpenRouter API Key");
+
+  // Use Custom prompt if provided, otherwise default to the exported constant
+  const systemPrompt = customPrompt || SYSTEM_PROMPT_FILTER;
 
   try {
     const response = await fetch(OPENROUTER_URL, {
@@ -262,7 +269,7 @@ export const filterIrrelevantProfiles = async (rows: { id: number | string, text
       body: JSON.stringify({
         model: MODEL_NAME,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT_FILTER },
+          { role: "system", content: systemPrompt },
           { role: "user", content: JSON.stringify(rows) }
         ],
         response_format: {
