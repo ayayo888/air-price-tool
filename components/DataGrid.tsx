@@ -12,7 +12,7 @@ interface DataGridProps {
 // Icon for the filter button
 const FilterIcon = ({ active }: { active: boolean }) => (
   <svg 
-    className={`w-3 h-3 ${active ? 'text-[#0078D7]' : 'text-[#999999] hover:text-[#666666]'}`} 
+    className={`w-3 h-3 ${active ? 'text-[#0078D7]' : 'text-[#A0A0A0]'} transition-colors duration-200`} 
     fill="currentColor" 
     viewBox="0 0 24 24"
   >
@@ -31,8 +31,12 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
   // openFilterHeader: Which column's menu is currently open (null = none)
   const [openFilterHeader, setOpenFilterHeader] = useState<string | null>(null);
   
-  // activeFilters: Map of 'Column Name' -> Set of allowed values
+  // activeFilters: Map of 'Column Name' -> Set of allowed values (Regular checkboxes)
   const [activeFilters, setActiveFilters] = useState<Record<string, Set<string>>>({});
+
+  // uniqueColumns: Set of columns that are currently in "Show Unique / Deduplicate" mode.
+  // Logic: A row is shown only if its value in these columns has NOT been seen before (Strict Cleaning).
+  const [uniqueColumns, setUniqueColumns] = useState<Set<string>>(new Set());
   
   // tempFilterSelection: Used while the menu is open (before clicking OK)
   const [tempFilterSelection, setTempFilterSelection] = useState<Set<string>>(new Set());
@@ -59,20 +63,29 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
   // 1. Calculate Unique Values and Counts for a specific column
   const getUniqueStats = (column: string) => {
     const stats = new Map<string, number>();
+    
     data.forEach(row => {
       let val = row[column];
-      // Normalize value: convert null/undefined/empty to "(空白)" for display
-      if (val === null || val === undefined || String(val).trim() === '') {
+      
+      // Normalize value: Trim whitespace to avoid "123" and "123 " being separate
+      if (val === null || val === undefined) {
         val = '(空白)';
       } else {
-        val = String(val);
+        val = String(val).trim();
+        if (val === '') val = '(空白)';
       }
+      
       stats.set(val, (stats.get(val) || 0) + 1);
     });
+
     return Array.from(stats.entries()).sort((a, b) => {
-       // Sort: (Blank) usually goes last or first, let's put it first for visibility or alpha sort
-       if (a[0] === '(空白)') return -1;
-       if (b[0] === '(空白)') return 1;
+       // 1. Sort by Count Descending (High frequency first)
+       const countDiff = b[1] - a[1];
+       if (countDiff !== 0) return countDiff;
+
+       // 2. Tie-break: Sort by Value Ascending
+       if (a[0] === '(空白)') return 1; // Put blanks at the bottom if counts are equal
+       if (b[0] === '(空白)') return -1;
        return a[0].localeCompare(b[0]);
     });
   };
@@ -112,10 +125,8 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
   // 4. Toggle Select All
   const toggleSelectAll = (allValues: string[]) => {
     if (tempFilterSelection.size === allValues.length) {
-      // If all selected, deselect all
       setTempFilterSelection(new Set());
     } else {
-      // Otherwise, select all
       setTempFilterSelection(new Set(allValues));
     }
   };
@@ -127,11 +138,9 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
     const stats = getUniqueStats(openFilterHeader);
     const allValues = stats.map(s => s[0]);
 
-    // If all values are selected, we can actually remove the filter key to save performance
-    // But keeping it explicit is safer for UI consistency. 
-    // Optimization: If selection size == allValues size, remove from activeFilters to denote "no filter"
-    
     const newFilters = { ...activeFilters };
+    
+    // If all values are selected, remove the explicit value filter for this column
     if (tempFilterSelection.size === allValues.length) {
       delete newFilters[openFilterHeader];
     } else {
@@ -139,38 +148,109 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
     }
     
     setActiveFilters(newFilters);
+    // Note: hitting OK confirms the value checkboxes. It does NOT affect the Unique Toggle (which applies instantly/independently).
     setOpenFilterHeader(null);
   };
 
-  // 6. Clear Filter for current column
-  const clearFilter = () => {
-    if (!openFilterHeader) return;
-    const newFilters = { ...activeFilters };
-    delete newFilters[openFilterHeader];
-    setActiveFilters(newFilters);
-    setOpenFilterHeader(null);
+  // 6. Handle "Deduplicate" / "Show Unique" Button
+  const handleToggleUniqueMode = (header: string) => {
+    const newUniqueSet = new Set(uniqueColumns);
+    if (newUniqueSet.has(header)) {
+      newUniqueSet.delete(header);
+    } else {
+      newUniqueSet.add(header);
+      // Optional: When enabling deduplication, we usually want to clear specific value filters 
+      // to ensure the user sees the unique list properly.
+      const newFilters = { ...activeFilters };
+      delete newFilters[header];
+      setActiveFilters(newFilters);
+    }
+    setUniqueColumns(newUniqueSet);
+    // Keep menu open to let user see status change, or close it? 
+    // Usually close is better feedback.
+    setOpenFilterHeader(null); 
   };
 
   // -- Derived Data --
-  // Apply active filters to data
   const filteredData = useMemo(() => {
-    return data.filter(row => {
-      // Must match ALL active column filters
+    if (!data || data.length === 0) return [];
+
+    // 1. Apply Standard Value Filters (Checkboxes)
+    let result = data.filter(row => {
       return Object.keys(activeFilters).every(colKey => {
         const allowedValues = activeFilters[colKey];
         if (!allowedValues) return true;
 
         let cellValue = row[colKey];
-        if (cellValue === null || cellValue === undefined || String(cellValue).trim() === '') {
+        if (cellValue === null || cellValue === undefined) {
           cellValue = '(空白)';
         } else {
-          cellValue = String(cellValue);
+          cellValue = String(cellValue).trim();
+          if (cellValue === '') cellValue = '(空白)';
         }
         
         return allowedValues.has(cellValue);
       });
     });
-  }, [data, activeFilters]);
+
+    // 2. Apply Deduplication (Strict Unique Filter)
+    // Logic: If multiple columns are selected (e.g. ID and Phone), 
+    // a row is hidden if its ID was seen OR its Phone was seen.
+    if (uniqueColumns.size > 0) {
+      const seenMaps: Record<string, Set<string>> = {};
+      
+      // Initialize sets for each active unique column
+      uniqueColumns.forEach(col => {
+        seenMaps[col] = new Set();
+      });
+
+      result = result.filter(row => {
+        let isDuplicate = false;
+
+        // Check against all active unique constraints
+        for (const col of uniqueColumns) {
+          let val = row[col];
+          // Normalize
+          if (val === null || val === undefined) {
+            val = '(空白)';
+          } else {
+            val = String(val).trim();
+            if (val === '') val = '(空白)';
+          }
+
+          if (seenMaps[col].has(val)) {
+            isDuplicate = true;
+          } else {
+            // Important: We only add to 'seen' if we are keeping this row?
+            // Actually, for "Strict Unique", yes. But wait.
+            // If row has (ID=1, Phone=A) -> Keep. SeenID={1}, SeenPhone={A}
+            // If next row has (ID=1, Phone=B) -> ID matches. Duplicate. Drop.
+            // If next row has (ID=2, Phone=A) -> Phone matches. Duplicate. Drop.
+            // This ensures the result has NO duplicate IDs and NO duplicate Phones.
+          }
+        }
+
+        if (isDuplicate) {
+          return false;
+        }
+
+        // If not duplicate, add values to seen and keep row
+        for (const col of uniqueColumns) {
+          let val = row[col];
+          if (val === null || val === undefined) {
+            val = '(空白)';
+          } else {
+            val = String(val).trim();
+            if (val === '') val = '(空白)';
+          }
+          seenMaps[col].add(val);
+        }
+        return true;
+      });
+    }
+
+    return result;
+  }, [data, activeFilters, uniqueColumns]);
 
   // -- Standard Handlers --
 
@@ -180,7 +260,6 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
       alert("表格为空或筛选结果为空");
       return;
     }
-    // Export only what is visible (filteredData)
     const exportData = filteredData.map(row => {
       const rowData: Record<string, any> = {};
       headers.forEach(h => { 
@@ -195,7 +274,7 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
     const ws = utils.json_to_sheet(exportData, { header: headers });
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, "CleanedData");
-    writeFile(wb, `douyin_data.${format === 'csv' ? 'csv' : 'xlsx'}`);
+    writeFile(wb, `douyin_data_export.${format === 'csv' ? 'csv' : 'xlsx'}`);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,6 +290,7 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
         const jsonData = utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: "", raw: false });
         processRawGrid(jsonData);
       } catch (error) {
+        console.error(error);
         alert("文件解析失败");
       }
     };
@@ -243,8 +323,8 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
       });
       parsedRows.push(rowObj);
     }
-    // Importing new data clears filters to avoid confusion
     setActiveFilters({});
+    setUniqueColumns(new Set()); // Reset unique filter on import
     onImportData(parsedRows, filteredRawHeaders);
   };
 
@@ -255,6 +335,11 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
         <div className="flex items-center gap-2">
            <span className="text-xs text-[#333333]">
              显示: {filteredData.length} / 总计: {data.length}
+             {uniqueColumns.size > 0 && (
+               <span className="ml-2 text-[#0078D7] font-semibold">
+                 (已去重: {Array.from(uniqueColumns).join(', ')})
+               </span>
+             )}
            </span>
         </div>
         
@@ -291,72 +376,99 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
             <tr>
               <th className="w-8 border-b border-r border-[#D9D9D9] bg-[#F5F5F5] text-center"></th>
               {headers.map((h, i) => {
-                 const isFilterActive = !!activeFilters[h];
+                 // Active logic: Either has value filters OR is IN the uniqueColumns set
+                 const isFilterActive = !!activeFilters[h] || uniqueColumns.has(h);
                  const isMenuOpen = openFilterHeader === h;
 
                  return (
                    <th key={i} className="relative px-2 py-1 border-b border-r border-[#D9D9D9] font-normal text-xs text-[#333333] h-[30px] hover:bg-[#EBEBEB] group select-none">
-                     <div className="flex items-center justify-between w-full">
-                       <span className="truncate mr-1">{h}</span>
+                     <div className="flex items-center justify-between w-full h-full">
+                       <span className="truncate mr-1 font-semibold">{h}</span>
                        <button 
                           onClick={(e) => handleFilterClick(h, e)}
-                          className={`p-1 rounded hover:bg-[#DADADA] focus:outline-none ${isMenuOpen || isFilterActive ? 'visible' : 'invisible group-hover:visible'}`}
+                          title="筛选"
+                          className={`p-1 rounded hover:bg-[#DADADA] focus:outline-none flex-shrink-0`}
                        >
                          <FilterIcon active={isFilterActive} />
                        </button>
                      </div>
 
-                     {/* Filter Dropdown Menu */}
+                     {/* Filter Dropdown Menu (Win10 Style) */}
                      {isMenuOpen && (
                        <div 
                          ref={filterMenuRef}
-                         className="absolute left-0 top-full mt-0 w-64 bg-white border border-[#CCCCCC] shadow-[2px_2px_10px_rgba(0,0,0,0.1)] z-50 flex flex-col font-normal"
+                         className="absolute left-0 top-full mt-0 w-64 bg-white border border-[#CCCCCC] shadow-[3px_3px_10px_rgba(0,0,0,0.15)] z-50 flex flex-col font-normal"
+                         onClick={(e) => e.stopPropagation()}
                        >
-                         {/* Action Buttons */}
-                         <div className="flex justify-between p-2 border-b border-[#E5E5E5] bg-[#F9F9F9]">
-                           <button onClick={applyFilter} className="text-xs px-3 py-1 bg-[#0078D7] text-white hover:bg-[#006CC1]">确定</button>
-                           <button onClick={() => setOpenFilterHeader(null)} className="text-xs px-3 py-1 border border-[#CCCCCC] bg-white hover:bg-[#F0F0F0]">取消</button>
-                         </div>
+                         {(() => {
+                           // Calculate stats inside the dropdown
+                           const stats = getUniqueStats(h);
+                           const allValues = stats.map(s => s[0]);
+                           const isAllSelected = tempFilterSelection.size === allValues.length;
+                           const isUniqueModeActive = uniqueColumns.has(h);
 
-                         {/* List Area */}
-                         <div className="max-h-60 overflow-y-auto p-2 scrollbar-win10">
-                            {(() => {
-                              const stats = getUniqueStats(h);
-                              const allValues = stats.map(s => s[0]);
-                              const isAllSelected = tempFilterSelection.size === allValues.length;
-                              
-                              return (
-                                <div className="flex flex-col gap-1">
-                                  {/* Select All */}
-                                  <label className="flex items-center gap-2 px-1 py-0.5 hover:bg-[#F0F0F0] cursor-pointer">
-                                    <input 
-                                      type="checkbox" 
-                                      checked={isAllSelected}
-                                      onChange={() => toggleSelectAll(allValues)}
-                                      className="accent-[#0078D7]"
-                                    />
-                                    <span className="text-xs text-[#333333]">(全选) {filteredData.length}</span>
-                                  </label>
-                                  
-                                  <div className="h-[1px] bg-[#E5E5E5] my-1"></div>
-                                  
-                                  {/* Individual Items */}
-                                  {stats.map(([val, count]) => (
-                                    <label key={val} className="flex items-center gap-2 px-1 py-0.5 hover:bg-[#F0F0F0] cursor-pointer">
-                                      <input 
-                                        type="checkbox" 
-                                        checked={tempFilterSelection.has(val)}
-                                        onChange={() => toggleFilterValue(val)}
-                                        className="accent-[#0078D7]"
-                                      />
-                                      <span className="text-xs text-[#333333] truncate flex-1" title={val}>{val}</span>
-                                      <span className="text-xs text-[#999999]">({count})</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-                         </div>
+                           return (
+                             <>
+                               {/* Action Buttons */}
+                               <div className="flex justify-between p-2 border-b border-[#E5E5E5] bg-[#F9F9F9]">
+                                 <button onClick={applyFilter} className="text-xs px-4 py-1 bg-[#0078D7] text-white hover:bg-[#006CC1] transition-colors border border-transparent">确定</button>
+                                 <button onClick={() => setOpenFilterHeader(null)} className="text-xs px-4 py-1 border border-[#CCCCCC] bg-white hover:bg-[#F0F0F0] text-[#333333] transition-colors">取消</button>
+                               </div>
+
+                               {/* Helper Button: Deduplicate (Filter Unique Items) */}
+                               <div className="px-2 py-1.5 border-b border-[#E5E5E5] bg-white flex justify-center">
+                                  <button 
+                                    onClick={() => handleToggleUniqueMode(h)}
+                                    className={`w-full text-xs py-1 border transition-colors flex items-center justify-center gap-1
+                                      ${isUniqueModeActive 
+                                        ? 'bg-[#E5F1FB] border-[#0078D7] text-[#0078D7] font-bold' 
+                                        : 'bg-[#F0F0F0] border-[#CCCCCC] text-[#333333] hover:bg-[#E0E0E0]'
+                                      }
+                                    `}
+                                    title="将重复出现的项合并，每个值只保留一行"
+                                  >
+                                    {isUniqueModeActive ? (
+                                      <>✓ 已去重 (显示全部)</>
+                                    ) : (
+                                      <>✦ 筛选唯一项 (去重)</>
+                                    )}
+                                  </button>
+                               </div>
+
+                               {/* List Area */}
+                               <div className="max-h-60 overflow-y-auto p-2 scrollbar-win10 bg-white">
+                                    <div className="flex flex-col gap-1">
+                                      {/* Select All */}
+                                      <label className="flex items-center gap-2 px-1 py-1 hover:bg-[#F0F0F0] cursor-pointer select-none">
+                                        <input 
+                                          type="checkbox" 
+                                          checked={isAllSelected}
+                                          onChange={() => toggleSelectAll(allValues)}
+                                          className="accent-[#0078D7] w-3.5 h-3.5"
+                                        />
+                                        <span className="text-xs text-[#333333] font-semibold">(全选)</span>
+                                      </label>
+                                      
+                                      <div className="h-[1px] bg-[#E5E5E5] my-1"></div>
+                                      
+                                      {/* Individual Items - Sorted by Count Descending */}
+                                      {stats.map(([val, count]) => (
+                                        <label key={val} className="flex items-center gap-2 px-1 py-0.5 hover:bg-[#F0F0F0] cursor-pointer select-none">
+                                          <input 
+                                            type="checkbox" 
+                                            checked={tempFilterSelection.has(val)}
+                                            onChange={() => toggleFilterValue(val)}
+                                            className="accent-[#0078D7] w-3.5 h-3.5"
+                                          />
+                                          <span className="text-xs text-[#333333] truncate flex-1" title={val}>{val}</span>
+                                          <span className="text-xs text-[#888888]">({count})</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                               </div>
+                             </>
+                           );
+                         })()}
                        </div>
                      )}
                    </th>
@@ -396,8 +508,8 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
             ))}
             {filteredData.length === 0 && (
               <tr>
-                <td colSpan={headers.length + 1} className="text-center py-8 text-[#999999] text-xs">
-                  {data.length > 0 ? "没有符合筛选条件的数据" : "表格为空，请导入数据或使用左侧工具提取"}
+                <td colSpan={headers.length + 1} className="text-center py-10 text-[#999999] text-xs">
+                  {data.length > 0 ? "没有符合筛选条件的数据" : "暂无数据，请导入或使用左侧工具提取"}
                 </td>
               </tr>
             )}
