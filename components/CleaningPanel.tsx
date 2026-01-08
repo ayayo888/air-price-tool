@@ -7,9 +7,10 @@ interface CleaningPanelProps {
   onAddRows: (newRows: CleanerRow[]) => void;
   onRemoveRows: (ids: (string | number)[]) => void;
   onUpdateStatus: (ids: (string | number)[], status: 'verified' | 'unverified') => void;
+  onClearAll: () => void;
 }
 
-export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAddRows, onRemoveRows, onUpdateStatus }) => {
+export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAddRows, onRemoveRows, onUpdateStatus, onClearAll }) => {
   const [activeTab, setActiveTab] = useState<'initial' | 'relevance'>('initial');
   const [apiKey, setApiKey] = useState('');
   const [inputText, setInputText] = useState('');
@@ -31,6 +32,11 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
     localStorage.setItem('openrouter_api_key', val);
   };
 
+  const handleClearKey = () => {
+    setApiKey('');
+    localStorage.removeItem('openrouter_api_key');
+  };
+
   const handleInitialCleaning = async () => {
     if (!inputText.trim()) { alert("请输入需要清洗的内容"); return; }
     if (!apiKey) { alert("请先输入 OpenRouter API Key"); return; }
@@ -40,6 +46,11 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
     setDebugLog(null);
 
     try {
+      // Tip for the user regarding token limits
+      if (inputText.length > 5000) {
+        setStatus("提示: 文本较长，建议分批处理以避免截断错误...");
+      }
+
       const parsedData = await extractProfilesFromText(inputText, apiKey);
       
       if (parsedData.length === 0) {
@@ -56,6 +67,7 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
 
       parsedData.forEach(p => {
         const dId = String(p.douyinId || "").trim();
+        // Skip duplicate Douyin IDs if they already exist in the table
         if (dId && existingIds.has(dId)) {
           duplicateCount++;
         } else {
@@ -74,8 +86,9 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
 
       onAddRows(newRows);
       setStatus(`完成: 新增 ${newRows.length}，重复 ${duplicateCount}`);
-      setInputText("");
-
+      // Don't clear input text automatically in case they want to adjust, 
+      // but maybe clearing it is better UX? Let's keep it for now.
+      
     } catch (e: any) {
       console.error(e);
       setStatus(`Error: ${e.message}`);
@@ -142,13 +155,22 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
       {/* API Key Input - Win10 style input */}
       <div className="p-4 border-b border-[#E5E5E5] bg-white">
         <label className="block text-[11px] text-[#666666] mb-1">OpenRouter API Key</label>
-        <input 
-          type="password" 
-          value={apiKey}
-          onChange={(e) => handleSaveKey(e.target.value)}
-          placeholder="sk-..."
-          className="w-full text-xs p-1.5 bg-white border border-[#999999] hover:border-[#666666] focus:border-[#0078D7] focus:ring-1 focus:ring-[#0078D7] outline-none transition-colors rounded-none placeholder-gray-400"
-        />
+        <div className="flex gap-1">
+          <input 
+            type="password" 
+            value={apiKey}
+            onChange={(e) => handleSaveKey(e.target.value)}
+            placeholder="sk-..."
+            className="flex-1 text-xs p-1.5 bg-white border border-[#999999] hover:border-[#666666] focus:border-[#0078D7] focus:ring-1 focus:ring-[#0078D7] outline-none transition-colors rounded-none placeholder-gray-400"
+          />
+          <button 
+            onClick={handleClearKey} 
+            title="清除 Key"
+            className="px-2 bg-[#F0F0F0] border border-[#CCCCCC] hover:bg-[#E0E0E0] text-[#666666]"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* Win10 Pivot Headers */}
@@ -174,7 +196,7 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
           <div className="flex flex-col h-full gap-3">
             <textarea 
               className="flex-1 w-full p-2 text-xs bg-white border border-[#999999] hover:border-[#666666] focus:border-[#0078D7] outline-none font-mono resize-none rounded-none text-[#333333]"
-              placeholder="粘贴文本..."
+              placeholder="请粘贴要提取的原始文本... (建议分批处理，每次不超过100行)"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
             />
@@ -235,7 +257,19 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
             </div>
           )}
         </div>
-        
+      </div>
+
+      {/* Footer Actions (Reset Cache) */}
+      <div className="p-4 border-t border-[#E5E5E5] bg-[#F9F9F9]">
+         <div className="text-[10px] text-[#666666] mb-2 text-center">
+            遇到问题或需要重新开始?
+         </div>
+         <button
+            onClick={onClearAll}
+            className="w-full py-1.5 text-[#333333] text-xs border border-[#999999] hover:bg-[#E5E5E5] hover:border-[#666666] active:bg-[#CCCCCC] transition-colors bg-white"
+          >
+            清空表格数据 (Reset Data)
+          </button>
       </div>
     </div>
   );

@@ -79,7 +79,7 @@ export default function App() {
   };
 
   const resetDatabase = () => {
-    if(confirm("确定要清空所有数据吗？此操作不可恢复。")) {
+    if(confirm("确定要清空所有数据吗？\n此操作将清除所有已提取的表格数据。\n(API Key配置不会被清除)")) {
       setProject({ rows: [] });
     }
   };
@@ -95,9 +95,7 @@ export default function App() {
           <span className="text-xs text-[#333333]">抖音数据清洗工具 Pro</span>
         </div>
         <div className="flex items-center gap-4 app-region-no-drag">
-          <button onClick={resetDatabase} className="text-[10px] text-[#666666] hover:bg-[#E5E5E5] px-2 py-0.5 transition-colors">
-            清空数据
-          </button>
+          <span className="text-[10px] text-[#999999]">Auto-saved to LocalStorage</span>
         </div>
       </header>
 
@@ -110,6 +108,7 @@ export default function App() {
             onAddRows={handleAddRows}
             onRemoveRows={handleRemoveRows}
             onUpdateStatus={handleUpdateStatus}
+            onClearAll={resetDatabase}
           />
         </aside>
 
