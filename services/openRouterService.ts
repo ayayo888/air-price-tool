@@ -4,7 +4,7 @@ import { ParsedProfile } from "../types";
 const MODEL_NAME = "google/gemini-2.0-flash-001";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-StrictPrompt");
+console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-ExplicitJSON");
 
 // Custom Error class to transport raw response to UI
 export class ApiError extends Error {
@@ -81,16 +81,36 @@ const FILTER_JSON_SCHEMA = {
   }
 };
 
-// --- UPDATED PROMPTS: EXPLICIT JSON ENFORCEMENT ---
+// --- UPDATED PROMPTS: EXPLICIT JSON EXAMPLES ---
 
 const SYSTEM_PROMPT_EXTRACT = `
 你是一个专业的数据清洗助手。你的任务是从用户提供的非结构化文本中提取抖音/TikTok账号信息。
 
-【严格输出规则】
-1. 只允许输出符合 Schema 定义的 JSON 字符串。
-2. 严禁使用 Markdown 代码块（不要包含 \`\`\`json 或 \`\`\`）。
-3. 严禁包含任何“好的”、“这是结果”等解释性文字。
-4. 如果未提取到数据，返回空数组。
+【目标输出格式示例】
+请严格按照以下 JSON 格式输出，不要包含任何其他文字：
+{
+  "profiles": [
+    {
+      "username": "示例用户A",
+      "douyinId": "dy123456",
+      "fans": "10.5w",
+      "bio": "专注欧美物流",
+      "contact": "13800138000"
+    },
+    {
+      "username": "示例用户B",
+      "douyinId": "user_b",
+      "fans": "2000",
+      "bio": "个人生活分享",
+      "contact": ""
+    }
+  ]
+}
+
+【严格规则】
+1. 直接返回 JSON 对象，不要使用 Markdown 代码块（严禁 \`\`\`json）。
+2. 不要包含“好的”、“结果如下”等废话。
+3. 如果未提取到数据，返回 { "profiles": [] }。
 `;
 
 const SYSTEM_PROMPT_FILTER = `
@@ -101,10 +121,16 @@ const SYSTEM_PROMPT_FILTER = `
 - 保留（相关）：空运、海运、快递、物流、货代、双清包税、空派、海派、集运、海外仓、跨境电商供应链、外贸。
 - 删除（无关）：纯娱乐、生活分享、甚至修车/餐饮等本地服务、纯粹的博览会推广（除非明确是物流展）、卖衣服/百货直播号。
 
-【严格输出规则】
-1. 只允许输出符合 Schema 定义的 JSON 字符串。
-2. 严禁使用 Markdown 代码块（不要包含 \`\`\`json 或 \`\`\`）。
-3. 严禁包含任何解释性文字。
+【目标输出格式示例】
+请严格按照以下 JSON 格式输出，只包含需要删除的 ID 列表：
+{
+  "ids_to_remove": [ 101, 102, 505 ]
+}
+
+【严格规则】
+1. 直接返回 JSON 对象，不要使用 Markdown 代码块（严禁 \`\`\`json）。
+2. 严禁包含任何解释性文字。
+3. 如果没有需要删除的，返回 { "ids_to_remove": [] }。
 `;
 
 // --- Helper: Robust JSON Parsing with Logging ---
