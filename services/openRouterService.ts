@@ -1,7 +1,7 @@
 import { ParsedProfile } from "../types";
 
-// Using Gemini 2.0 Flash which supports Structured Outputs strictly.
-const MODEL_NAME = "google/gemini-3-flash-preview";
+// Using Gemini 2.0 Flash
+const MODEL_NAME = "google/gemini-2.0-flash-001";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // 1. Strict Schema for Extraction
@@ -38,7 +38,6 @@ const EXTRACT_JSON_SCHEMA = {
               description: "提取到的手机/微信/邮箱. 如果未找到，请返回空字符串" 
             }
           },
-          // In strict mode, all properties in 'properties' must be listed in 'required'
           required: ["username", "douyinId", "fans", "bio", "contact"],
           additionalProperties: false
         }
@@ -87,8 +86,35 @@ const SYSTEM_PROMPT_FILTER = `
 - 卖衣服、卖百货的直播号（除非是卖物流服务）。
 `;
 
+// --- Helper: Robust JSON Parsing with Logging ---
+const safeJsonParse = (rawText: string, context: string) => {
+  console.log(`[${context}] Raw Model Output:`, rawText); // DEBUG LOG
+
+  try {
+    // 1. Try direct parse
+    return JSON.parse(rawText);
+  } catch (e) {
+    console.warn(`[${context}] Direct JSON parse failed, trying to strip Markdown...`);
+    
+    // 2. Try stripping Markdown code blocks (common issue even with structured outputs)
+    const cleanText = rawText
+      .replace(/```json\s*/g, "")
+      .replace(/```\s*/g, "")
+      .trim();
+      
+    try {
+      return JSON.parse(cleanText);
+    } catch (e2) {
+      console.error(`[${context}] Final JSON parse failed.`, e2);
+      throw new Error(`无法解析 API 返回的 JSON: ${(e2 as Error).message}`);
+    }
+  }
+};
+
 export const extractProfilesFromText = async (text: string, apiKey: string): Promise<ParsedProfile[]> => {
   if (!apiKey) throw new Error("请输入 OpenRouter API Key");
+
+  console.log("[Extract] Sending request to OpenRouter...", { model: MODEL_NAME });
 
   try {
     const response = await fetch(OPENROUTER_URL, {
@@ -113,33 +139,55 @@ export const extractProfilesFromText = async (text: string, apiKey: string): Pro
       })
     });
 
+    // Get raw text first to avoid crashing on non-JSON error pages
+    const responseBodyText = await response.text();
+    
+    // Log the status and body length
+    console.log(`[Extract] Response Status: ${response.status}`);
+    console.log(`[Extract] Response Body Preview: ${responseBodyText.substring(0, 200)}...`);
+
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error?.message || `API Error: ${response.status}`);
+      // Try to parse error message from JSON, otherwise use text
+      let errorMsg = `API Error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(responseBodyText);
+        if (errorJson.error && errorJson.error.message) {
+          errorMsg = errorJson.error.message;
+        }
+      } catch {
+        errorMsg += ` - ${responseBodyText}`; // Append raw text if not JSON
+      }
+      throw new Error(errorMsg);
     }
 
-    const data = await response.json();
-    const contentStr = data.choices[0]?.message?.content;
+    const data = JSON.parse(responseBodyText);
+    const contentStr = data.choices?.[0]?.message?.content;
     
-    if (!contentStr) throw new Error("API 返回内容为空");
+    if (!contentStr) {
+      console.error("[Extract] Unexpected structure:", data);
+      throw new Error("API 返回结构异常: choices[0].message.content 为空");
+    }
 
-    // With strict: true, content should be pure JSON string, but we safely parse just in case
-    const parsedObj = JSON.parse(contentStr);
+    // Robust Parse
+    const parsedObj = safeJsonParse(contentStr, "Extract");
     
     if (parsedObj && Array.isArray(parsedObj.profiles)) {
       return parsedObj.profiles;
     }
 
+    console.warn("[Extract] Valid JSON but missing 'profiles' array:", parsedObj);
     return [];
 
   } catch (error) {
-    console.error("Extraction Error:", error);
+    console.error("[Extract] Fatal Error:", error);
     throw error;
   }
 };
 
 export const filterIrrelevantProfiles = async (rows: { id: number | string, text: string }[], apiKey: string): Promise<any[]> => {
   if (!apiKey) throw new Error("请输入 OpenRouter API Key");
+
+  console.log("[Filter] Sending request...", { count: rows.length });
 
   try {
     const response = await fetch(OPENROUTER_URL, {
@@ -164,26 +212,43 @@ export const filterIrrelevantProfiles = async (rows: { id: number | string, text
       })
     });
 
+    const responseBodyText = await response.text();
+
+    console.log(`[Filter] Response Status: ${response.status}`);
+    
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error?.message || `API Error: ${response.status}`);
+       let errorMsg = `API Error: ${response.status}`;
+       try {
+         const errorJson = JSON.parse(responseBodyText);
+         if (errorJson.error && errorJson.error.message) {
+           errorMsg = errorJson.error.message;
+         }
+       } catch {
+         errorMsg += ` - ${responseBodyText}`;
+       }
+       throw new Error(errorMsg);
     }
 
-    const data = await response.json();
-    const contentStr = data.choices[0]?.message?.content;
+    const data = JSON.parse(responseBodyText);
+    const contentStr = data.choices?.[0]?.message?.content;
 
-    if (!contentStr) throw new Error("API 返回内容为空");
+    if (!contentStr) {
+      console.error("[Filter] Unexpected structure:", data);
+      throw new Error("API 返回内容为空");
+    }
     
-    const parsedObj = JSON.parse(contentStr);
+    // Robust Parse
+    const parsedObj = safeJsonParse(contentStr, "Filter");
 
     if (parsedObj && Array.isArray(parsedObj.ids_to_remove)) {
       return parsedObj.ids_to_remove;
     }
     
+    console.warn("[Filter] Valid JSON but missing 'ids_to_remove':", parsedObj);
     return [];
 
   } catch (error) {
-    console.error("Filter Error:", error);
+    console.error("[Filter] Fatal Error:", error);
     throw error;
   }
 };
