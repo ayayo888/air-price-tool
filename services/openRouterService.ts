@@ -1,8 +1,45 @@
 import { ParsedProfile } from "../types";
 
-// Using Gemini 2.0 Flash on OpenRouter for high speed and long context
-const MODEL_NAME = "google/gemini-2.0-flash-001";
+// Using Gemini 3.0 Flash Preview
+const MODEL_NAME = "google/gemini-3-flash-preview";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+// Helper to reliably extract JSON array from text that might contain reasoning or markdown
+const extractJsonArray = (text: string): any => {
+  try {
+    // 1. Try direct parse
+    return JSON.parse(text);
+  } catch (e) {
+    // 2. Try cleaning markdown code blocks
+    const cleanMarkdown = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    try {
+      return JSON.parse(cleanMarkdown);
+    } catch (e2) {
+      // 3. Robust Regex Extraction: Find the outermost [...]
+      // This is crucial if "Reasoning" output leaks into the content or if there is chatter before the JSON
+      const match = text.match(/\[[\s\S]*\]/);
+      if (match) {
+        try {
+          return JSON.parse(match[0]);
+        } catch (e3) {
+           console.error("Regex extracted invalid JSON:", match[0]);
+        }
+      }
+
+      // 4. Try finding outermost {...} if it's a single object (fallback for single profile or wrapped response)
+      const objectMatch = text.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+         try {
+            return JSON.parse(objectMatch[0]);
+         } catch (e4) {
+             console.error("Regex extracted invalid JSON Object:", objectMatch[0]);
+         }
+      }
+
+      throw new Error("无法从 AI 响应中解析出有效的 JSON 数据");
+    }
+  }
+};
 
 const SYSTEM_PROMPT_EXTRACT = `
 你是一个专业的数据清洗助手。你的任务是从用户提供的非结构化文本中提取抖音/TikTok账号信息。
@@ -51,7 +88,7 @@ export const extractProfilesFromText = async (text: string, apiKey: string): Pro
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": window.location.origin, // OpenRouter requirement
+        "HTTP-Referer": window.location.origin,
         "X-Title": "Data Cleaner Tool"
       },
       body: JSON.stringify({
@@ -60,7 +97,12 @@ export const extractProfilesFromText = async (text: string, apiKey: string): Pro
           { role: "system", content: SYSTEM_PROMPT_EXTRACT },
           { role: "user", content: text }
         ],
-        response_format: { type: "json_object" } // Try to force JSON
+        // Force JSON object to ensure structure
+        response_format: { type: "json_object" }, 
+        // Enable reasoning as requested to improve extraction accuracy
+        reasoning: { enabled: true },
+        // Maximize output tokens to prevent cutoff on long lists (approx 64k tokens)
+        max_tokens: 64000 
       })
     });
 
@@ -72,24 +114,17 @@ export const extractProfilesFromText = async (text: string, apiKey: string): Pro
     const data = await response.json();
     const content = data.choices[0].message.content;
     
-    // Cleanup potential Markdown
-    const cleanContent = content.replace(/```json/g, "").replace(/```/g, "").trim();
-    
-    // OpenRouter/Gemini might wrap array in object like { profiles: [...] } or just return [...]
-    // We try to handle both.
-    let parsed;
-    try {
-        parsed = JSON.parse(cleanContent);
-    } catch(e) {
-        throw new Error("API 返回格式错误，非 JSON");
-    }
+    // Use robust parsing helper
+    const parsed = extractJsonArray(content);
 
+    // Handle various return shapes
     if (Array.isArray(parsed)) return parsed;
+    // With 'any' type, TS won't narrow parsed to 'never' here
     if (parsed.profiles && Array.isArray(parsed.profiles)) return parsed.profiles;
     if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
     
     // Last ditch: if it returned a single object instead of array
-    if (typeof parsed === 'object') return [parsed];
+    if (typeof parsed === 'object' && parsed !== null) return [parsed];
 
     return [];
 
@@ -102,9 +137,6 @@ export const extractProfilesFromText = async (text: string, apiKey: string): Pro
 export const filterIrrelevantProfiles = async (rows: { id: number | string, text: string }[], apiKey: string): Promise<any[]> => {
   if (!apiKey) throw new Error("请输入 OpenRouter API Key");
 
-  // Chunking logic: If rows are too many, we might need to split, but Gemini Flash has huge context.
-  // We'll send batches of 50 to be safe and get quicker feedback.
-  
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: "POST",
@@ -119,7 +151,9 @@ export const filterIrrelevantProfiles = async (rows: { id: number | string, text
         messages: [
           { role: "system", content: SYSTEM_PROMPT_FILTER },
           { role: "user", content: JSON.stringify(rows) }
-        ]
+        ],
+        reasoning: { enabled: true },
+        max_tokens: 64000
       })
     });
 
@@ -130,9 +164,8 @@ export const filterIrrelevantProfiles = async (rows: { id: number | string, text
 
     const data = await response.json();
     const content = data.choices[0].message.content;
-    const cleanContent = content.replace(/```json/g, "").replace(/```/g, "").trim();
     
-    return JSON.parse(cleanContent); // Should be array of IDs
+    return extractJsonArray(content); // Should be array of IDs
 
   } catch (error) {
     console.error("Filter Error:", error);

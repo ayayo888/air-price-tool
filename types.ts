@@ -2,6 +2,7 @@
 // The standardized row structure for the Data Cleaner
 export interface CleanerRow {
   _internal_id?: number | string; // React Key
+  checkStatus?: 'unverified' | 'verified'; // Track if row has been checked by AI
   用户名: string;
   抖音号: string;
   粉丝数: string | number;
