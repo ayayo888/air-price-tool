@@ -23,22 +23,4 @@ export interface AIResponse {
   parsed: ParsedProfile[];
 }
 
-// Added types for PriceUpdater context
-export interface ParsedPortData {
-  ports: string[];
-  prices: {
-    [key: string]: number | string;
-  };
-}
-
-export interface PriceUpdatePreview {
-  rowId: number | string;
-  rowIndex: number;
-  port: string;
-  updates: Record<string, number | string>;
-  isMatch: boolean;
-  oldP45?: string | number;
-  newP45?: string | number;
-}
-
 export type SheetRow = CleanerRow;
