@@ -95,7 +95,7 @@ export default function App() {
           <h1 className="text-lg font-bold text-gray-800 tracking-tight">抖音数据清洗工具 <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full ml-2">Pro v3.0</span></h1>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-xs text-gray-400">Powered by Gemini 3.0 Flash</span>
+          <span className="text-xs text-gray-400">Powered by Gemini 2.0 Flash</span>
           <button onClick={resetDatabase} className="text-xs text-red-500 hover:text-red-700 hover:underline">
             清空所有数据
           </button>
