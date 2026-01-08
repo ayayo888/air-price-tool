@@ -1,6 +1,6 @@
 {
-  "short_name": "SmartUpdater",
-  "name": "AirFreight Smart Updater",
+  "short_name": "DouyinCleaner",
+  "name": "Douyin Data Cleaner Pro",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/726/726455.png",
@@ -16,5 +16,5 @@
   "start_url": "./index.html",
   "display": "standalone",
   "theme_color": "#ffffff",
-  "background_color": "#f3f4f6"
+  "background_color": "#F3F3F3"
 }

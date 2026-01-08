@@ -1,7 +1,7 @@
 import { ParsedProfile } from "../types";
 
 // Using Gemini 2.0 Flash (OpenRouter ID)
-const MODEL_NAME = "google/gemini-2.5-pro";
+const MODEL_NAME = "google/gemini-2.0-flash-001";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-ExplicitJSON");

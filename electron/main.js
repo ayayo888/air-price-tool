@@ -11,24 +11,21 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "AirFreight Smart Updater",
-    icon: path.join(__dirname, 'icon.ico'), // You can add an icon.ico in the root later
+    title: "Douyin Data Cleaner Pro",
+    icon: path.join(__dirname, 'icon.ico'), 
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false, // For simple apps. Ideally use preload scripts for security.
-      webSecurity: false // Optional: Allows loading local images if needed
+      contextIsolation: false, 
+      webSecurity: false 
     },
-    autoHideMenuBar: true, // Hide the default file menu
+    autoHideMenuBar: true, 
   });
 
-  // Load the index.html of the app.
-  // In development, we load the Vite dev server.
-  // In production, we load the built index.html.
   const isDev = !app.isPackaged;
   
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools(); // Open DevTools in dev mode
+    mainWindow.webContents.openDevTools(); 
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
