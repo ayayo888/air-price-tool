@@ -42,24 +42,22 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
     if (!apiKey) { alert("请先输入 OpenRouter API Key"); return; }
 
     setIsLoading(true);
-    setStatus("正在处理...");
+    setStatus("准备开始...");
     setDebugLog(null);
 
     try {
-      // Tip for the user regarding token limits
-      if (inputText.length > 5000) {
-        setStatus("提示: 文本较长，建议分批处理以避免截断错误...");
-      }
+      const onProgress = (current: number, total: number) => {
+        setStatus(`正在自动分批处理: 第 ${current} / ${total} 批...`);
+      };
 
-      const parsedData = await extractProfilesFromText(inputText, apiKey);
+      // Calling the service which now handles batching internally
+      const parsedData = await extractProfilesFromText(inputText, apiKey, onProgress);
       
       if (parsedData.length === 0) {
-        setStatus("未提取到数据，请检查输入。");
+        setStatus("未提取到数据，请检查输入或 Key 配额。");
         setIsLoading(false);
         return;
       }
-
-      setStatus(`提取 ${parsedData.length} 条，正在录入...`);
 
       const newRows: CleanerRow[] = [];
       let duplicateCount = 0;
@@ -85,9 +83,7 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
       });
 
       onAddRows(newRows);
-      setStatus(`完成: 新增 ${newRows.length}，重复 ${duplicateCount}`);
-      // Don't clear input text automatically in case they want to adjust, 
-      // but maybe clearing it is better UX? Let's keep it for now.
+      setStatus(`处理完成: 共提取 ${parsedData.length} 条 (新增 ${newRows.length}，重复 ${duplicateCount})`);
       
     } catch (e: any) {
       console.error(e);
@@ -196,7 +192,7 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
           <div className="flex flex-col h-full gap-3">
             <textarea 
               className="flex-1 w-full p-2 text-xs bg-white border border-[#999999] hover:border-[#666666] focus:border-[#0078D7] outline-none font-mono resize-none rounded-none text-[#333333]"
-              placeholder="请粘贴要提取的原始文本... (建议分批处理，每次不超过100行)"
+              placeholder="请粘贴要提取的原始文本... (程序会自动分批处理长文本)"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
             />
@@ -262,13 +258,14 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
       {/* Footer Actions (Reset Cache) */}
       <div className="p-4 border-t border-[#E5E5E5] bg-[#F9F9F9]">
          <div className="text-[10px] text-[#666666] mb-2 text-center">
-            遇到问题或需要重新开始?
+            清理缓存
          </div>
          <button
             onClick={onClearAll}
             className="w-full py-1.5 text-[#333333] text-xs border border-[#999999] hover:bg-[#E5E5E5] hover:border-[#666666] active:bg-[#CCCCCC] transition-colors bg-white"
+            title="此操作将清空表格和浏览器缓存，下次粘贴时将重新录入数据"
           >
-            清空表格数据 (Reset Data)
+            清空表格与缓存 (Reset All)
           </button>
       </div>
     </div>

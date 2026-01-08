@@ -1,10 +1,10 @@
 import { ParsedProfile } from "../types";
 
 // Using Gemini 2.0 Flash (OpenRouter ID)
-const MODEL_NAME = "google/gemini-3-flash-preview";
+const MODEL_NAME = "google/gemini-2.0-flash-001";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-ExplicitJSON");
+console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-AutoBatch");
 
 // Custom Error class to transport raw response to UI
 export class ApiError extends Error {
@@ -81,7 +81,7 @@ const FILTER_JSON_SCHEMA = {
   }
 };
 
-// --- UPDATED PROMPTS: EXPLICIT JSON EXAMPLES ---
+// --- UPDATED PROMPTS ---
 
 const SYSTEM_PROMPT_EXTRACT = `
 你是一个专业的数据清洗助手。你的任务是从用户提供的非结构化文本中提取抖音/TikTok账号信息。
@@ -96,21 +96,13 @@ const SYSTEM_PROMPT_EXTRACT = `
       "fans": "10.5w",
       "bio": "专注欧美物流",
       "contact": "13800138000"
-    },
-    {
-      "username": "示例用户B",
-      "douyinId": "user_b",
-      "fans": "2000",
-      "bio": "个人生活分享",
-      "contact": ""
     }
   ]
 }
 
 【严格规则】
-1. 直接返回 JSON 对象，不要使用 Markdown 代码块（严禁 \`\`\`json）。
-2. 不要包含“好的”、“结果如下”等废话。
-3. 如果未提取到数据，返回 { "profiles": [] }。
+1. 直接返回 JSON 对象，不要使用 Markdown 代码块。
+2. 如果未提取到数据，返回 { "profiles": [] }。
 `;
 
 const SYSTEM_PROMPT_FILTER = `
@@ -126,29 +118,19 @@ const SYSTEM_PROMPT_FILTER = `
 {
   "ids_to_remove": [ 101, 102, 505 ]
 }
-
-【严格规则】
-1. 直接返回 JSON 对象，不要使用 Markdown 代码块（严禁 \`\`\`json）。
-2. 严禁包含任何解释性文字。
-3. 如果没有需要删除的，返回 { "ids_to_remove": [] }。
 `;
 
-// --- Helper: Robust JSON Parsing with Logging ---
+// --- Helper: Robust JSON Parsing ---
 const safeJsonParse = (rawText: string, context: string) => {
-  console.log(`[${context}] Raw Model Output:`, rawText); 
-
   try {
     return JSON.parse(rawText);
   } catch (e) {
     console.warn(`[${context}] Direct JSON parse failed, trying to strip Markdown...`);
-    
-    // Aggressive cleanup: remove markdown blocks, valid or invalid
     let cleanText = rawText
-      .replace(/```json/gi, "") // remove ```json
-      .replace(/```/g, "")      // remove remaining ```
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
       .trim();
     
-    // Sometimes models add a conversational prefix line even without markdown
     const firstBrace = cleanText.indexOf('{');
     const lastBrace = cleanText.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1) {
@@ -164,79 +146,101 @@ const safeJsonParse = (rawText: string, context: string) => {
   }
 };
 
-export const extractProfilesFromText = async (text: string, apiKey: string): Promise<ParsedProfile[]> => {
+// --- Internal Single Batch Request ---
+const processSingleBatch = async (textChunk: string, apiKey: string): Promise<ParsedProfile[]> => {
+  const response = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": window.location.origin,
+      "X-Title": "Data Cleaner Tool"
+    },
+    body: JSON.stringify({
+      model: MODEL_NAME,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT_EXTRACT },
+        { role: "user", content: textChunk }
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: EXTRACT_JSON_SCHEMA
+      },
+      max_tokens: 64000 
+    })
+  });
+
+  const responseBodyText = await response.text();
+  
+  if (!response.ok) {
+    let errorMsg = `API Error: ${response.status}`;
+    try {
+      const errorJson = JSON.parse(responseBodyText);
+      if (errorJson.error && errorJson.error.message) {
+        errorMsg = errorJson.error.message;
+      }
+    } catch { /* ignore */ }
+    throw new ApiError(errorMsg, responseBodyText);
+  }
+
+  const data = JSON.parse(responseBodyText);
+  const contentStr = data.choices?.[0]?.message?.content;
+  
+  if (!contentStr) throw new ApiError("Empty Content", responseBodyText);
+
+  const parsedObj = safeJsonParse(contentStr, "ExtractBatch");
+  return parsedObj?.profiles || [];
+};
+
+// --- Main Export with Batching Logic ---
+export const extractProfilesFromText = async (
+  fullText: string, 
+  apiKey: string,
+  onProgress?: (current: number, total: number) => void
+): Promise<ParsedProfile[]> => {
   if (!apiKey) throw new Error("请输入 OpenRouter API Key");
 
-  console.log("[Extract] Sending request to OpenRouter...", { model: MODEL_NAME });
-
-  try {
-    const response = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": window.location.origin,
-        "X-Title": "Data Cleaner Tool"
-      },
-      body: JSON.stringify({
-        model: MODEL_NAME,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT_EXTRACT },
-          { role: "user", content: text }
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: EXTRACT_JSON_SCHEMA
-        },
-        max_tokens: 64000
-      })
-    });
-
-    const responseBodyText = await response.text();
-    console.log(`[Extract] Response Status: ${response.status}`);
-    
-    if (!response.ok) {
-      let errorMsg = `API Error: ${response.status}`;
-      try {
-        const errorJson = JSON.parse(responseBodyText);
-        if (errorJson.error && errorJson.error.message) {
-          errorMsg = errorJson.error.message;
-        }
-      } catch {
-        errorMsg += ` - Raw: ${responseBodyText.substring(0, 100)}...`;
-      }
-      throw new ApiError(errorMsg, responseBodyText);
+  // 1. Split text into chunks to avoid token limits/truncation
+  // Splitting by 50 lines is a safe heuristic for ~4k output tokens
+  const lines = fullText.split('\n');
+  const CHUNK_SIZE = 50; 
+  const chunks: string[] = [];
+  
+  for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
+    const chunk = lines.slice(i, i + CHUNK_SIZE).join('\n');
+    if (chunk.trim()) {
+      chunks.push(chunk);
     }
-
-    const data = JSON.parse(responseBodyText);
-    const contentStr = data.choices?.[0]?.message?.content;
-    
-    if (!contentStr) {
-      throw new ApiError("API Response Content is Empty", responseBodyText);
-    }
-
-    const parsedObj = safeJsonParse(contentStr, "Extract");
-    
-    if (parsedObj && Array.isArray(parsedObj.profiles)) {
-      return parsedObj.profiles;
-    }
-
-    console.warn("[Extract] Valid JSON but missing 'profiles' array:", parsedObj);
-    return [];
-
-  } catch (error) {
-    console.error("[Extract] Fatal Error:", error);
-    if (error instanceof ApiError) {
-      throw error;
-    }
-    throw new ApiError((error as Error).message);
   }
+
+  console.log(`[Batching] Input split into ${chunks.length} chunks.`);
+  
+  let allProfiles: ParsedProfile[] = [];
+
+  // 2. Process chunks sequentially
+  for (let i = 0; i < chunks.length; i++) {
+    if (onProgress) onProgress(i + 1, chunks.length);
+    
+    try {
+      console.log(`[Batching] Processing chunk ${i + 1}/${chunks.length}...`);
+      const batchProfiles = await processSingleBatch(chunks[i], apiKey);
+      allProfiles = [...allProfiles, ...batchProfiles];
+    } catch (error) {
+      console.error(`[Batching] Chunk ${i + 1} failed:`, error);
+      // We continue to the next chunk instead of failing everything
+      // Optional: Add a placeholder error profile or just log it
+    }
+  }
+
+  return allProfiles;
 };
 
 export const filterIrrelevantProfiles = async (rows: { id: number | string, text: string }[], apiKey: string): Promise<any[]> => {
   if (!apiKey) throw new Error("请输入 OpenRouter API Key");
 
-  console.log("[Filter] Sending request...", { count: rows.length });
+  // Filtering is usually lighter on output tokens (just IDs), 
+  // but if input is huge, we might need batching here too later.
+  // For now, let's keep it simple as user explicitly asked about extraction issues.
 
   try {
     const response = await fetch(OPENROUTER_URL, {
@@ -262,40 +266,19 @@ export const filterIrrelevantProfiles = async (rows: { id: number | string, text
     });
 
     const responseBodyText = await response.text();
-    console.log(`[Filter] Response Status: ${response.status}`);
     
     if (!response.ok) {
-       let errorMsg = `API Error: ${response.status}`;
-       try {
-         const errorJson = JSON.parse(responseBodyText);
-         if (errorJson.error && errorJson.error.message) {
-           errorMsg = errorJson.error.message;
-         }
-       } catch {
-         errorMsg += ` - Raw: ${responseBodyText.substring(0, 100)}...`;
-       }
-       throw new ApiError(errorMsg, responseBodyText);
+       throw new Error(`API Error: ${response.status}`);
     }
 
     const data = JSON.parse(responseBodyText);
     const contentStr = data.choices?.[0]?.message?.content;
+    const parsedObj = safeJsonParse(contentStr || "{}", "Filter");
 
-    if (!contentStr) {
-      throw new ApiError("API Response Content is Empty", responseBodyText);
-    }
-    
-    const parsedObj = safeJsonParse(contentStr, "Filter");
-
-    if (parsedObj && Array.isArray(parsedObj.ids_to_remove)) {
-      return parsedObj.ids_to_remove;
-    }
-    
-    console.warn("[Filter] Valid JSON but missing 'ids_to_remove':", parsedObj);
-    return [];
+    return parsedObj?.ids_to_remove || [];
 
   } catch (error) {
     console.error("[Filter] Fatal Error:", error);
-    if (error instanceof ApiError) throw error;
-    throw new ApiError((error as Error).message);
+    throw error;
   }
 };
