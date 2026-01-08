@@ -4,7 +4,7 @@ import { ParsedProfile } from "../types";
 const MODEL_NAME = "google/gemini-2.0-flash-001";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-AutoBatch-v2");
+console.log("[System] OpenRouter Service Loaded - Version: Win10-Gemini2.0-Flash-Overlap500");
 
 // Custom Error class to transport raw response to UI
 export class ApiError extends Error {
@@ -81,10 +81,18 @@ const FILTER_JSON_SCHEMA = {
   }
 };
 
-// --- UPDATED PROMPTS ---
+// --- UPDATED PROMPTS FOR OVERLAP STRATEGY ---
 
 const SYSTEM_PROMPT_EXTRACT = `
 你是一个专业的数据清洗助手。你的任务是从用户提供的非结构化文本中提取抖音/TikTok账号信息。
+
+【重要：边缘处理策略】
+你正在处理一段被“滑动窗口”切分的文本块，该文本块可能在开头或结尾处切断了某条用户数据。
+1. **开头检查**：如果在文本的最开头发现只有“简介”没有“用户名”等残缺信息，请**直接忽略**该条目。
+2. **结尾检查**：如果在文本的最结尾发现只有“用户名”没有后续信息，请**直接忽略**该条目。
+3. **只提取完整数据**：仅当你可以提取到（用户名+抖音号+简介）等关键信息的组合时才输出。
+
+【由于有重叠窗口，不要担心丢失数据，残缺的数据会在下一个窗口中完整出现。】
 
 【目标输出格式示例】
 请严格按照以下 JSON 格式输出，不要包含任何其他文字：
@@ -192,7 +200,7 @@ const processSingleBatch = async (textChunk: string, apiKey: string): Promise<Pa
   return parsedObj?.profiles || [];
 };
 
-// --- Main Export with Batching Logic ---
+// --- Main Export with Sliding Window Logic ---
 export const extractProfilesFromText = async (
   fullText: string, 
   apiKey: string,
@@ -200,20 +208,25 @@ export const extractProfilesFromText = async (
 ): Promise<ParsedProfile[]> => {
   if (!apiKey) throw new Error("请输入 OpenRouter API Key");
 
-  // 1. Split text into chunks to avoid token limits/truncation
-  // Splitting by 50 lines is a safe heuristic for ~4k output tokens
+  // 1. Split text into chunks with OVERLAP
   const lines = fullText.split('\n');
-  const CHUNK_SIZE = 50; 
+  const CHUNK_SIZE = 500; // Large window: 500 lines
+  const OVERLAP_SIZE = 10; // Safety overlap: 10 lines
+  const STEP_SIZE = CHUNK_SIZE - OVERLAP_SIZE; // Step: 490 lines
+  
   const chunks: string[] = [];
   
-  for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
+  // Sliding window loop
+  for (let i = 0; i < lines.length; i += STEP_SIZE) {
     const chunk = lines.slice(i, i + CHUNK_SIZE).join('\n');
     if (chunk.trim()) {
       chunks.push(chunk);
     }
+    // Break if we've reached the end of the lines
+    if (i + CHUNK_SIZE >= lines.length) break;
   }
 
-  console.log(`[Batching] Input split into ${chunks.length} chunks.`);
+  console.log(`[Batching] Input split into ${chunks.length} chunks (Size: ${CHUNK_SIZE}, Overlap: ${OVERLAP_SIZE}).`);
   
   let allProfiles: ParsedProfile[] = [];
 
@@ -227,7 +240,7 @@ export const extractProfilesFromText = async (
       allProfiles = [...allProfiles, ...batchProfiles];
     } catch (error) {
       console.error(`[Batching] Chunk ${i + 1} failed:`, error);
-      // We continue to the next chunk instead of failing everything
+      // Continue to next chunk on error to maximize data recovery
     }
   }
 

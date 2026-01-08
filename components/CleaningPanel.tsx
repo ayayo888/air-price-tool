@@ -47,7 +47,8 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
 
     try {
       const onProgress = (current: number, total: number) => {
-        setStatus(`正在自动分批处理: 第 ${current} / ${total} 批...`);
+        // Show the 500-line batch logic to the user
+        setStatus(`正在自动分批处理 (500行/批): 第 ${current} / ${total} 批...`);
       };
 
       // Calling the service which now handles batching internally
