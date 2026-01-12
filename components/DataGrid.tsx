@@ -58,6 +58,14 @@ export const DataGrid: React.FC<DataGridProps> = ({ data, headers, onImportData,
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // -- Reset filters when data is cleared --
+  useEffect(() => {
+    if (data.length === 0) {
+      setActiveFilters({});
+      setUniqueColumns(new Set());
+    }
+  }, [data]);
+
   // -- Filter Logic Helpers --
 
   // 1. Calculate Unique Values and Counts for a specific column

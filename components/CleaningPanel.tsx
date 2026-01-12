@@ -18,6 +18,9 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
   const [status, setStatus] = useState('');
   const [debugLog, setDebugLog] = useState<string | null>(null);
 
+  // Reset Confirmation State
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+
   // New State for Editable Prompt
   const [filterPrompt, setFilterPrompt] = useState(SYSTEM_PROMPT_FILTER);
 
@@ -29,6 +32,14 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
     const storedKey = localStorage.getItem('openrouter_api_key');
     if (storedKey) setApiKey(storedKey);
   }, []);
+
+  // Auto-cancel reset confirmation after 3 seconds
+  useEffect(() => {
+    if (isConfirmingReset) {
+      const timer = setTimeout(() => setIsConfirmingReset(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isConfirmingReset]);
 
   const handleSaveKey = (val: string) => {
     setApiKey(val);
@@ -153,26 +164,23 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
   };
 
   // Comprehensive Reset Function
-  const handleFullReset = () => {
-    const isConfirmed = confirm(
-      "【确定要彻底清空吗？】\n\n" +
-      "1. 清空所有已提取的表格数据\n" +
-      "2. 清空左侧输入框文本\n" +
-      "3. 重置所有操作状态\n\n" +
-      "(您的 API Key 会被保留)"
-    );
-
-    if (isConfirmed) {
-      // 1. Clear Local State
-      setInputText('');
-      setFilterPrompt(SYSTEM_PROMPT_FILTER); // Reset Prompt to Default
-      setStatus('已重置所有数据');
-      setDebugLog(null);
-      setIsLoading(false);
-      
-      // 2. Clear App State (Table Data)
-      onClearAll();
+  const handleResetClick = () => {
+    if (!isConfirmingReset) {
+      setIsConfirmingReset(true);
+      return;
     }
+
+    // Executing Reset
+    // 1. Clear Local State
+    setInputText('');
+    setFilterPrompt(SYSTEM_PROMPT_FILTER); 
+    setStatus('已重置所有数据');
+    setDebugLog(null);
+    setIsLoading(false);
+    setIsConfirmingReset(false);
+    
+    // 2. Clear App State (Table Data)
+    onClearAll();
   };
 
   return (
@@ -309,11 +317,16 @@ export const CleaningPanel: React.FC<CleaningPanelProps> = ({ currentRows, onAdd
             清理缓存与数据
          </div>
          <button
-            onClick={handleFullReset}
-            className="w-full py-1.5 text-[#333333] text-xs border border-[#999999] hover:bg-[#E5E5E5] hover:border-[#666666] active:bg-[#CCCCCC] transition-colors bg-white font-semibold"
+            onClick={handleResetClick}
+            className={`w-full py-1.5 text-xs border transition-colors font-semibold
+              ${isConfirmingReset 
+                ? 'bg-red-600 text-white border-red-700 hover:bg-red-700' 
+                : 'bg-white text-[#333333] border-[#999999] hover:bg-[#E5E5E5] hover:border-[#666666] active:bg-[#CCCCCC]'
+              }
+            `}
             title="此操作将清空表格数据和输入框内容"
           >
-            清空所有数据 (Reset All)
+            {isConfirmingReset ? "确定要清空吗？(点击确认)" : "清空所有数据 (Reset All)"}
           </button>
       </div>
     </div>
